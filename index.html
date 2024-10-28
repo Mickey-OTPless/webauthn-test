@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>
+            Activate OTP-less Sign in. One-tap, No more passwords. Fast, simple,
+            secure.
+        </title>
+    </head>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        p {
+            margin: 0;
+            padding: 20px 0;
+        }
+
+        #response {
+            width: 100%;
+            padding: 10px;
+            word-break: break-all;
+            border: 1px solid #eee;
+            border-radius: 12px;
+        }
+    </style>
+    <div class="content">
+        <div>
+            <input id="userid-input" />
+            <button onclick="initiateWebAuthn()">Web Authn</button>
+        </div>
+
+        <p>Response:</p>
+        <div id="response"></div>
+    </div>
+
+    <!-- Helper Script -->
+    <script>
+        let OTPlessSignin = null;
+
+        async function OTPlessSdk() {
+            return new Promise(async (resolve) => {
+
+                if (document.getElementById('otpless-sdk') && OTPlessSignin) return resolve();
+
+                const script = document.createElement('script');
+                script.src = "https://otpless.tech/v3/headless.js";
+                script.id = "otpless-sdk";
+                script.setAttribute('data-appid', 'K8K415KI2VMZV27648JJ');
+
+                script.onload = function () {
+                    const OTPless = Reflect.get(window, "OTPless")
+                    OTPlessSignin = new OTPless(callback);
+                    resolve()
+                };
+
+                document.head.appendChild(script);
+            });
+        }
+
+
+        async function hitOTPlessSdk(params) {
+            await OTPlessSdk();
+
+            const { requestType, request } = params;
+
+            return await OTPlessSignin[requestType](request)
+        }
+
+    </script>
+
+    <!-- Main Script -->
+    <script>
+
+        const appendResponse = (response) => {
+            console.log({ response })
+            const input = document.getElementById('response')
+
+            input.append(response)
+        }
+
+        const callback = (eventCallback) => {
+
+            console.log({ eventCallback });
+
+            const ONETAP = () => {
+                const { response } = eventCallback;
+
+                console.log({ response, token: response.token });
+
+                appendResponse(JSON.stringify(response))
+
+                // YOUR_LOGIC
+            };
+
+            const OTP_AUTO_READ = () => {
+                const { response: { otp } } = eventCallback;
+
+                // YOUR OTP FLOW
+
+                const otpInput = document.getElementById('otp-input');
+
+                otpInput.value = otp
+            }
+
+            const EVENTS_MAP = {
+                ONETAP,
+                OTP_AUTO_READ
+            }
+
+            if ("responseType" in eventCallback) EVENTS_MAP[eventCallback.responseType]()
+        }
+
+        async function initiateWebAuthn() {
+            const input = document.getElementById('userid-input')
+
+            const request = {
+                channel: "WEB_AUTHN",
+                userId: input.value
+            }
+
+            const initiate = await hitOTPlessSdk({
+                requestType: "initiate",
+                request
+            })
+
+            console.log({ initiate })
+
+            appendResponse(JSON.stringify(initiate))
+        }
+
+
+        OTPlessSdk();
+    </script>
+
+</html>
