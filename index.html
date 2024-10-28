@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>
+            Activate OTP-less Sign in. One-tap, No more passwords. Fast, simple,
+            secure.
+        </title>
+    </head>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        p {
+            margin: 0;
+            padding: 20px 0;
+        }
+
+        #response,
+        #token-response {
+            width: 100%;
+            padding: 10px;
+            word-break: break-all;
+            border: 1px solid #eee;
+            border-radius: 12px;
+        }
+
+        #validate-token {
+            display: none;
+            margin-top: 40px;
+        }
+
+        #token-response {
+            margin-top: 20px;
+        }
+    </style>
+    <div class="content">
+        <div>
+            <input id="userid-input" />
+            <button onclick="initiateWebAuthn()">Web Authn</button>
+            <button onclick="authPayment()">Auth Payment</button>
+        </div>
+
+        <p>Response:</p>
+        <div id="response"></div>
+        <div id="validate-token">
+            <button onclick="validateToken()">Validate Token</button>
+            <div id="token-response"></div>
+        </div>
+    </div>
+
+    <!-- Helper Script -->
+    <script>
+        let OTPlessSignin = null;
+
+        async function OTPlessSdk() {
+            return new Promise(async (resolve) => {
+                if (document.getElementById("otpless-sdk") && OTPlessSignin)
+                    return resolve();
+
+                const script = document.createElement("script");
+                script.src = "https://otpless.tech/v3/headless.js";
+                script.id = "otpless-sdk";
+                script.setAttribute("data-appid", "K8K415KI2VMZV27648JJ");
+
+                script.onload = function () {
+                    const OTPless = Reflect.get(window, "OTPless");
+                    OTPlessSignin = new OTPless(callback);
+                    resolve();
+                };
+
+                document.head.appendChild(script);
+            });
+        }
+
+        async function hitOTPlessSdk(params) {
+            await OTPlessSdk();
+
+            const { requestType, request } = params;
+
+            return await OTPlessSignin[requestType](request);
+        }
+    </script>
+
+    <!-- Main Script -->
+    <script>
+        const appendResponse = (response, validate) => {
+            const input = document.getElementById("response");
+            const tokenResponse = document.getElementById("token-response");
+
+            validate ? tokenResponse.append(response) : input.append(response);
+        };
+
+        const callback = (eventCallback) => {
+            const ONETAP = () => {
+                const { response } = eventCallback;
+
+                console.log({ response, token: response.token });
+
+                appendResponse(JSON.stringify(response));
+
+                Reflect.set(window, "token", response.token);
+
+                const validateToken = document.getElementById("validate-token");
+                validateToken.style.display = "block";
+
+                // YOUR_LOGIC
+            };
+
+            const EVENTS_MAP = {
+                ONETAP,
+            };
+
+            if ("responseType" in eventCallback)
+                EVENTS_MAP[eventCallback.responseType]();
+        };
+
+        async function OTPlessWebAuthSdk(requestId) {
+            const request = { channel: "WEB_AUTHN", requestId };
+
+            const initiate = await hitOTPlessSdk({
+                requestType: "initiate",
+                request,
+            });
+
+            console.log({ initiate });
+
+            appendResponse(JSON.stringify(initiate));
+        }
+
+        async function getRequestId(body) {
+            const input = document.getElementById("userid-input");
+
+            const response = await fetch(
+                "https://oidc-pp.otpless.app/auth/v1/webauthn",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        clientId: "9BA17A178A0711EFAC7102E825E2EA5C",
+                        clientSecret: "ac7102e825e2ea5c9ba17a568a0711ef",
+                    },
+                    body: JSON.stringify({
+                        identityType: "CUSTOM",
+                        identityValue: input.value,
+                        rpName: "OTPless Passkey Demo",
+                        domain: "webauthn-test-mauve.vercel.app",
+                        ...(body && { ...body })
+                    }),
+                }
+            ).then((response) => response.json().then((data) => data));
+
+            return response;
+        }
+
+        async function initiateWebAuthn() {
+            const response = await getRequestId();
+
+            OTPlessWebAuthSdk(response.requestId);
+        }
+
+        async function validateToken() {
+            const input = document.getElementById("userid-input");
+
+            const token = Reflect.get(window, "token");
+
+            const response = await fetch(
+                "https://oidc-pp.otpless.app/auth/v1/validate/token",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        clientId: "9BA17A178A0711EFAC7102E825E2EA5C",
+                        clientSecret: "ac7102e825e2ea5c9ba17a568a0711ef",
+                    },
+                    body: JSON.stringify({ token }),
+                }
+            ).then((response) => response.json().then((data) => data));
+
+            console.log({ response });
+
+            appendResponse(JSON.stringify(response), true);
+        }
+
+        async function authPayment() {
+            const response = await getRequestId({
+                isSPC: true,
+                attachment: "PLATFORM",
+                spc: {
+                    instrumentDisplayName: "xxx1234",
+                    instrumentDisplayIcon:
+                        "https://media.licdn.com/dms/image/v2/D4D0BAQFyZcEMFwZk-Q/company-logo_200_200/company-logo_200_200/0/1692083921904/otpless_logo?e=2147483647&v=beta&t=Lygoj29DP4AsJ8vsziHsdApMHM1n7lu6ZQ9kzo74Qj0",
+                    payeeOrigin: "https://example.com",
+                    amount: 1,
+                    currency: "INR",
+                },
+            });
+
+            OTPlessWebAuthSdk(response.requestId);
+        }
+        OTPlessSdk();
+    </script>
+
+</html>
